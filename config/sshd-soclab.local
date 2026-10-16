@@ -1,0 +1,9 @@
+[sshd]
+enabled = true
+backend = systemd
+port = ssh
+filter = sshd
+banaction = nftables-multiport
+maxretry = 5
+findtime = 60
+bantime = 600

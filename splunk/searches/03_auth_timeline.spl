@@ -1,0 +1,4 @@
+index=soc_lab sourcetype="soclab:sshd" ("Failed password" OR "Accepted password" OR "Accepted publickey")
+| rex field=_raw "(?<result>Failed|Accepted) (?<method>password|publickey) for (?:invalid user )?(?<user>\S+) from (?<src_ip>\d{1,3}(?:\.\d{1,3}){3}) port (?<src_port>\d+)"
+| table _time host result method user src_ip src_port _raw
+| sort 0 _time

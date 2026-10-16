@@ -1,0 +1,17 @@
+<dashboard version="1.1"><label>SSH Lab Investigation</label><description>Educational lab. Validate ingestion, timestamps, and each search against real data. All-time range is intended for offline lab exports.</description><row><panel><title>Failures by source</title><table><search><query>index=soc_lab sourcetype="soclab:sshd" "Failed password"
+| rex field=_raw "Failed password for (?:invalid user )?(?&lt;user&gt;\S+) from (?&lt;src_ip&gt;\d{1,3}(?:\.\d{1,3}){3}) port (?&lt;src_port&gt;\d+)"
+| where isnotnull(src_ip)
+| stats count as failures min(_time) as first_seen max(_time) as last_seen values(user) as users by host src_ip
+| convert ctime(first_seen) ctime(last_seen)
+</query><earliest>0</earliest><latest>now</latest></search><option name="count">20</option></table></panel></row><row><panel><title>Five or more failures in one minute</title><table><search><query>index=soc_lab sourcetype="soclab:sshd" "Failed password"
+| rex field=_raw "Failed password for (?:invalid user )?(?&lt;user&gt;\S+) from (?&lt;src_ip&gt;\d{1,3}(?:\.\d{1,3}){3}) port (?&lt;src_port&gt;\d+)"
+| where isnotnull(src_ip)
+| bin _time span=1m
+| stats count as failures values(user) as users by _time host src_ip
+| where failures &gt;= 5
+| sort 0 _time
+</query><earliest>0</earliest><latest>now</latest></search><option name="count">20</option></table></panel></row><row><panel><title>Authentication timeline</title><table><search><query>index=soc_lab sourcetype="soclab:sshd" ("Failed password" OR "Accepted password" OR "Accepted publickey")
+| rex field=_raw "(?&lt;result&gt;Failed|Accepted) (?&lt;method&gt;password|publickey) for (?:invalid user )?(?&lt;user&gt;\S+) from (?&lt;src_ip&gt;\d{1,3}(?:\.\d{1,3}){3}) port (?&lt;src_port&gt;\d+)"
+| table _time host result method user src_ip src_port _raw
+| sort 0 _time
+</query><earliest>0</earliest><latest>now</latest></search><option name="count">20</option></table></panel></row></dashboard>

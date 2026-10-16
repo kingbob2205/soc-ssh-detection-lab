@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.qcow2
+*.iso
+*.utm/
+runs/
+evidence/raw/
+evidence/screenshots/
+.DS_Store
