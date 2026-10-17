@@ -1,60 +1,82 @@
-# SSH Detection and Response Lab
+# SSH Brute-Force Detection & Response Lab (Splunk + Fail2ban)
 
-A personal SOC learning project: Kali Linux generates a small, controlled SSH password-guessing simulation against an Ubuntu VM in UTM. Ubuntu authentication events are investigated in Splunk, and Fail2ban provides host-level blocking.
+A hands-on SOC lab I built from scratch: **Kali Linux** runs a controlled SSH password-guessing simulation against an isolated **Ubuntu** server. The authentication logs are investigated in **Splunk** (SIEM), and **Fail2ban** automatically blocks the attacking IP with **nftables**.
 
-**Status: one protected VM simulation and the Fail2ban block were verified; 16 Ubuntu SSH journal events were ingested into Splunk and an ad hoc SPL search returned three failed-password events.** The one-minute alert, dashboard, baseline run and ban-expiry recovery have not been verified yet. The evidence directory records what was run and observed. No successful credential compromise is claimed.
+**Skills shown:** Linux log analysis · Splunk SPL (rex field extraction, stats, threshold detection) · Fail2ban / nftables · isolated lab networking · incident reporting · Python · CI tests
 
-[הסבר בעברית](docs/README_HE.md) · [Worked example](docs/EXAMPLE_WALKTHROUGH.md)
+[הסבר בעברית](docs/README_HE.md)
+
+## Results (run on 2026-10-17)
+
+| | Result |
+|---|---|
+| Attack simulation | Kali `10.77.0.10` → Ubuntu `10.77.0.20`, bounded run with a non-existent user and wrong passwords |
+| Detection (Splunk) | 16 SSH journal events ingested; SPL extracted user / source IP / port and found 3 failed-password events from the attacker |
+| Response (Fail2ban) | Attacker IP banned after 5 matching events in 60 s; nftables reject rule confirmed; next connection from Kali → `Connection refused` |
+| Documentation | Timeline, investigation and limitations in the [incident report](docs/INCIDENT_REPORT.md) |
+
+### Splunk – failed passwords by source IP
+![Splunk failed password search](evidence/2026-10-17/08-splunk-failed-passwords.jpg)
+
+### Fail2ban – attacker banned
+![Fail2ban ban](evidence/2026-10-17/01-fail2ban-ban.jpg)
+
+### Attacker blocked
+![SSH blocked](evidence/2026-10-17/06-ssh-blocked.jpg)
+
+More screenshots (nftables rule, Fail2ban log, sshd events, Splunk ingestion) are in [`evidence/2026-10-17/`](evidence/2026-10-17/).
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-  K[Kali Linux - bounded SSH simulation] -->|SSH port 22 - isolated lab network| U[Ubuntu target in UTM]
-  U --> J[sshd systemd journal]
-  J -->|export and import| S[Splunk Enterprise - SIEM searches and dashboard]
+  K[Kali Linux - SSH attack simulation] -->|SSH 22 - isolated host-only network| U[Ubuntu Server target]
+  U --> J[sshd / systemd journal]
+  J -->|log export| S[Splunk Enterprise - SPL searches, alert, dashboard]
   J --> F[Fail2ban sshd jail]
-  F -->|temporary source IP ban| N[Ubuntu nftables]
+  F -->|temporary IP ban| N[nftables]
 ```
 
-Splunk is the SIEM in this project; it is not a separate tool alongside a SIEM. Splunk detects and supports investigation. Fail2ban reads the target journal and blocks independently. This repository does **not** implement a Splunk-triggered automatic response or Splunk Enterprise Security.
+Splunk handles detection and investigation; Fail2ban handles the automated host-level response.
 
-## What this demonstrates after a verified run
+## Detection logic (SPL)
 
-- Linux authentication-log investigation and source/user extraction.
-- Threshold detection of repeated SSH failures in SPL.
-- Correlation of failed and successful authentication events.
-- Temporary blocking with Fail2ban and evidence-based verification.
-- Incident documentation, limitations, and reproducible lab steps.
+Repeated failures from one source within one minute ([all searches](splunk/searches/)):
 
-## Start here
+```spl
+index=soc_lab sourcetype="soclab:sshd" "Failed password"
+| rex field=_raw "Failed password for (?:invalid user )?(?<user>\S+) from (?<src_ip>\d{1,3}(?:\.\d{1,3}){3}) port (?<src_port>\d+)"
+| where isnotnull(src_ip)
+| bin _time span=1m
+| stats count as failures values(user) as users by _time host src_ip
+| where failures >= 5
+```
 
-1. Follow [setup and execution](docs/RUNBOOK.md).
-2. Run `python3 -m unittest discover -s tests -v` for local checks.
-3. Install the [Splunk search app](splunk/README.md), or paste the SPL searches into Splunk Web.
-4. Collect real evidence and complete the [incident report](docs/INCIDENT_REPORT.md).
-5. Update [verification status](evidence/STATUS.md) only with actual observations.
+Also included: failure summary by IP, an auth timeline (failed vs. accepted logins), a scheduled alert and a dashboard, packaged as a [Splunk app](splunk/).
 
-## Platform requirement
+## Repository
 
-Kali and Ubuntu ran as ARM64 guests on Apple Silicon. Splunk Enterprise 10.6.1.1 was installed on the Apple Silicon macOS host from Splunk's official ARM64 package. The instance was configured to bind the web and management interfaces to loopback. Splunk Enterprise license and platform terms still apply; this repository does not include a Splunk runtime or credentials.
+| Path | Contents |
+|---|---|
+| `scripts/simulate_ssh.py` | Bounded simulator: only accepts a lab IP in `10.77.0.0/24`, max 12 attempts, fake user |
+| `config/` | sshd / Fail2ban lab config |
+| `splunk/` | SPL searches, saved alert, dashboard |
+| `docs/RUNBOOK.md` | Step-by-step setup and execution |
+| `docs/INCIDENT_REPORT.md` | Incident report for the run |
+| `tests/` | Unit tests for the simulator's safety limits (run in GitHub Actions) |
 
-## Scope
+Run the tests: `python3 -m unittest discover -s tests -v`
 
-The simulation accepts one IPv4 target on `10.77.0.0/24`, uses a fixed nonexistent lab username and at most 12 generated wrong passwords, and records client results. It refuses other ranges. It does not recover credentials, target public services, or scan networks. A private IP alone does not prove isolation: verify the VM network before running.
+## Environment
 
-## Portfolio wording
+Kali 2026.1 and Ubuntu Server 24.04.3 (ARM64) in UTM on Apple Silicon, host-only network with no internet route during the test. Splunk Enterprise 10.6.1.1 on the macOS host, bound to localhost.
 
-Current: **Built an isolated Kali/Ubuntu SSH detection lab, investigated real authentication logs in Splunk, and verified a temporary source-IP block with Fail2ban. Alerting, dashboard, baseline and expiry retest remain in progress.**
+## Next steps
 
-After real verification: **Built an isolated Kali/Ubuntu lab, simulated repeated SSH authentication failures, investigated the events in Splunk, and verified temporary source-IP blocking with Fail2ban.**
+- Re-run with more attempts to trigger the Splunk threshold alert and capture the dashboard
+- Verify ban expiry and recovery
+- Continuous log forwarding (Splunk Universal Forwarder) instead of export
 
-This is educational hands-on experience, not professional production experience. Hazav should personally execute and explain the workflow before presenting it as a completed personal project.
+## Safety
 
-## References
-
-- [Ubuntu OpenSSH documentation](https://ubuntu.com/server/docs/how-to/security/openssh-server/)
-- [Ubuntu Fail2ban documentation](https://help.ubuntu.com/community/Fail2ban)
-- [UTM documentation](https://docs.getutm.app/)
-- [Splunk Enterprise requirements](https://help.splunk.com/en?resourceId=Splunk_Installation_Systemrequirements)
-- [Splunk saved search configuration](https://help.splunk.com/en/splunk-enterprise/alert-and-respond/alerting-manual/9.4/manual-alert-configuration-with-.conf-files/configure-alerts-in-savedsearches.conf)
+Everything runs on my own isolated VMs. The simulator refuses non-lab targets, uses a non-existent username, and does not recover credentials or scan networks.
