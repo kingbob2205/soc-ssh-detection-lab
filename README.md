@@ -2,7 +2,7 @@
 
 A personal SOC learning project: Kali Linux generates a small, controlled SSH password-guessing simulation against an Ubuntu VM in UTM. Ubuntu authentication events are investigated in Splunk, and Fail2ban provides host-level blocking.
 
-**Status: implementation and runbook prepared; end-to-end VM execution, Splunk searches, and blocking are NOT yet verified.** Local automated checks validate the simulation guardrails and configuration structure only. No example data in this repository is evidence of an actual attack or successful detection.
+**Status: one protected VM simulation and the Fail2ban block were verified; 16 Ubuntu SSH journal events were ingested into Splunk and an ad hoc SPL search returned three failed-password events.** The one-minute alert, dashboard, baseline run and ban-expiry recovery have not been verified yet. The evidence directory records what was run and observed. No successful credential compromise is claimed.
 
 [הסבר בעברית](docs/README_HE.md) · [Worked example](docs/EXAMPLE_WALKTHROUGH.md)
 
@@ -37,7 +37,7 @@ Splunk is the SIEM in this project; it is not a separate tool alongside a SIEM. 
 
 ## Platform requirement
 
-Kali and Ubuntu can use ARM64 guests on Apple Silicon. Splunk Enterprise itself currently requires a supported architecture such as x86-64; ARM64 Ubuntu is **not** a supported Splunk Enterprise server. Use a separate supported x86-64 machine/UTM-emulated Linux guest, or an available Splunk Cloud environment. Emulation may be slow. No Splunk instance, license, or cloud bill is created by this repository.
+Kali and Ubuntu ran as ARM64 guests on Apple Silicon. Splunk Enterprise 10.6.1.1 was installed on the Apple Silicon macOS host from Splunk's official ARM64 package. The instance was configured to bind the web and management interfaces to loopback. Splunk Enterprise license and platform terms still apply; this repository does not include a Splunk runtime or credentials.
 
 ## Scope
 
@@ -45,7 +45,7 @@ The simulation accepts one IPv4 target on `10.77.0.0/24`, uses a fixed nonexiste
 
 ## Portfolio wording
 
-Current: **Building a Kali/Ubuntu SSH detection lab with Splunk searches, a dashboard, and a Fail2ban response workflow. End-to-end validation pending.**
+Current: **Built an isolated Kali/Ubuntu SSH detection lab, investigated real authentication logs in Splunk, and verified a temporary source-IP block with Fail2ban. Alerting, dashboard, baseline and expiry retest remain in progress.**
 
 After real verification: **Built an isolated Kali/Ubuntu lab, simulated repeated SSH authentication failures, investigated the events in Splunk, and verified temporary source-IP blocking with Fail2ban.**
 
